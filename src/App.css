@@ -378,3 +378,25 @@
   font-size: 18px;
   letter-spacing: 0.3px;
 }
+
+/* Toast notification */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 64px;
+  transform: translateX(-50%) translateY(10px);
+  background: var(--surface);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 10px 14px;
+  z-index: 1000;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35), 0 0 0 1px var(--border) inset;
+  opacity: 0;
+  transition: opacity 160ms ease, transform 200ms ease;
+}
+
+.toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import * as protobuf from 'protobufjs/minimal'
 import './App.css'
 type LiveSet = Set<string>
 
@@ -6,16 +7,60 @@ function cellKey(row: number, col: number): string {
   return `${row},${col}`
 }
 
-// Encode/decode helpers for sharing state via URL
-function encodeState(cells: Array<[number, number]>): string {
-  const json = JSON.stringify({ cells })
-  // URL-safe base64
-  const b64 = btoa(unescape(encodeURIComponent(json)))
+// Base64url helpers
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i])
+  const b64 = btoa(binary)
   return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+function fromBase64Url(s: string): Uint8Array {
+  let b64 = s.replace(/-/g, '+').replace(/_/g, '/')
+  while (b64.length % 4 !== 0) b64 += '='
+  const binary = atob(b64)
+  const arr = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) arr[i] = binary.charCodeAt(i)
+  return arr
+}
+
+// Protobuf message encoder/decoder for compact links
+// message State { repeated sint32 cells = 1 [packed=true]; }
+function encodeState(cells: Array<[number, number]>): string {
+  // Flatten row/col pairs into a packed sint32 array: [r0, c0, r1, c1, ...]
+  const flat: number[] = []
+  for (const [r, c] of cells) { flat.push(r, c) }
+  const writer = protobuf.Writer.create()
+  // field 1 (packed sint32) using fork/ldelim
+  writer.uint32((1 << 3) | 2).fork()
+  for (const v of flat) writer.sint32(v)
+  writer.ldelim()
+  const bytes = writer.finish()
+  return toBase64Url(bytes)
 }
 
 function decodeState(param: string): Array<[number, number]> | null {
-  // Try URL-safe base64 first
+  // Try protobuf first
+  try {
+    const bytes = fromBase64Url(param)
+    const reader = protobuf.Reader.create(bytes)
+    const pairs: number[] = []
+    while (reader.pos < reader.len) {
+      const tag = reader.uint32()
+      const fieldNo = tag >>> 3
+      const wireType = tag & 7
+      if (fieldNo === 1 && wireType === 2) {
+        const end = reader.uint32() + reader.pos
+        while (reader.pos < end) pairs.push(reader.sint32())
+      } else {
+        reader.skipType(wireType)
+      }
+    }
+    const out: Array<[number, number]> = []
+    for (let i = 0; i + 1 < pairs.length; i += 2) out.push([pairs[i], pairs[i + 1]])
+    return out
+  } catch {
+    // fallthrough to backward-compatible JSON
+  }
   try {
     let b64 = param.replace(/-/g, '+').replace(/_/g, '/')
     while (b64.length % 4 !== 0) b64 += '='
@@ -23,9 +68,8 @@ function decodeState(param: string): Array<[number, number]> | null {
     const data = JSON.parse(json)
     if (Array.isArray(data?.cells)) return data.cells as Array<[number, number]>
   } catch {
-    // fallthrough
+    // ignore
   }
-  // Fallback: treat as URI-encoded JSON
   try {
     const json = decodeURIComponent(param)
     const data = JSON.parse(json)
@@ -91,6 +135,11 @@ function App() {
   const clampCell = (v: number) => Math.min(42, Math.max(10, v))
   const [offsetXPx, setOffsetXPx] = useState(0)
   const [offsetYPx, setOffsetYPx] = useState(0)
+
+  // Toast notification state
+  const [isToastVisible, setIsToastVisible] = useState(false)
+  const [toastMessage, setToastMessage] = useState('')
+  const toastTimeoutRef = useRef<number | null>(null)
 
   // Resize grid when window changes, keeping current cells if possible
   useEffect(() => {
@@ -478,6 +527,15 @@ function App() {
     const url = `${base}?state=${encoded}`
     try {
       await navigator.clipboard.writeText(url)
+      setToastMessage('Link copied to clipboard')
+      setIsToastVisible(true)
+      if (toastTimeoutRef.current !== null) {
+        window.clearTimeout(toastTimeoutRef.current)
+      }
+      toastTimeoutRef.current = window.setTimeout(() => {
+        setIsToastVisible(false)
+        toastTimeoutRef.current = null
+      }, 1600)
     } catch {
       // fallback prompt
       window.prompt('Shareable link (copy)', url)
@@ -764,6 +822,10 @@ function App() {
           </div>
         </div>
       )}
+      {/* Toast notification */}
+      <div className={`toast ${isToastVisible ? 'visible' : ''}`} role="status" aria-live="polite" aria-atomic="true">
+        {toastMessage}
+      </div>
     </div>
   )
 }
