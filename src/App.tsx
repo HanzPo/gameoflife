@@ -6,6 +6,36 @@ function cellKey(row: number, col: number): string {
   return `${row},${col}`
 }
 
+// Encode/decode helpers for sharing state via URL
+function encodeState(cells: Array<[number, number]>): string {
+  const json = JSON.stringify({ cells })
+  // URL-safe base64
+  const b64 = btoa(unescape(encodeURIComponent(json)))
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+function decodeState(param: string): Array<[number, number]> | null {
+  // Try URL-safe base64 first
+  try {
+    let b64 = param.replace(/-/g, '+').replace(/_/g, '/')
+    while (b64.length % 4 !== 0) b64 += '='
+    const json = decodeURIComponent(escape(atob(b64)))
+    const data = JSON.parse(json)
+    if (Array.isArray(data?.cells)) return data.cells as Array<[number, number]>
+  } catch {
+    // fallthrough
+  }
+  // Fallback: treat as URI-encoded JSON
+  try {
+    const json = decodeURIComponent(param)
+    const data = JSON.parse(json)
+    if (Array.isArray(data?.cells)) return data.cells as Array<[number, number]>
+  } catch {
+    // ignore
+  }
+  return null
+}
+
 function getNextGenerationSparse(current: LiveSet): LiveSet {
   const neighborCounts = new Map<string, number>()
 
@@ -79,9 +109,19 @@ function App() {
     return () => window.removeEventListener('resize', handleResize)
   }, [PITCH_PX])
 
-  // Load last initial state and last export name
+  // Load from URL param `state` if present; else load last initial state and last export name
   useEffect(() => {
     try {
+      const params = new URLSearchParams(window.location.search)
+      const param = params.get('state')
+      if (param) {
+        const cells = decodeState(param) || []
+        const set = new Set<string>()
+        for (const [r, c] of cells) set.add(cellKey(r, c))
+        setInitialLive(set)
+        setLive(new Set(set))
+        setGeneration(0)
+      } else {
       const saved = localStorage.getItem('gol_initial')
       if (saved) {
         const data = JSON.parse(saved) as { cells?: Array<[number, number]> }
@@ -90,6 +130,7 @@ function App() {
         setInitialLive(set)
         setLive(new Set(set))
         setGeneration(0)
+      }
       }
       const savedName = localStorage.getItem('gol_export_name')
       if (savedName) setExportName(savedName)
@@ -430,6 +471,19 @@ function App() {
     e.currentTarget.value = ''
   }, [])
 
+  const copyShareLink = useCallback(async () => {
+    const coords = Array.from(initialLive).map((k) => k.split(',').map(Number) as [number, number])
+    const encoded = encodeState(coords)
+    const base = `${window.location.origin}${window.location.pathname}`
+    const url = `${base}?state=${encoded}`
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch {
+      // fallback prompt
+      window.prompt('Shareable link (copy)', url)
+    }
+  }, [initialLive])
+
   return (
     <div className="gol-root">
       {/* Mobile-only notice overlay */}
@@ -480,6 +534,7 @@ function App() {
             <button className="control-btn" onClick={insertPreset} aria-label="Insert preset">Insert</button>
             <button className="control-btn" onClick={() => setIsExportOpen(true)} aria-label="Export pattern">Export</button>
             <button className="control-btn" onClick={onImportClick} aria-label="Import pattern">Import</button>
+            <button className="control-btn" onClick={copyShareLink} aria-label="Copy share link">Share</button>
             <input ref={fileInputRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={onImportChange} />
           </div>
         </div>
