@@ -1,0 +1,33 @@
+:root {
+  --background: #0f0f10;
+  --surface: #131315;
+  --elevated: #18181a;
+  --foreground: #f6f6f7;
+  --muted: #a9a9ad;
+  --border: #2a2a2e;
+  --hover: #202023;
+  --cell-size: 18px;
+
+  color-scheme: dark;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  line-height: 1.5;
+  font-weight: 500;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+button {
+  cursor: pointer;
+}
