@@ -481,6 +481,13 @@ function App() {
 
   return (
     <div className="gol-root">
+      {/* Mobile-only notice overlay */}
+      <div className="mobile-overlay" role="dialog" aria-modal="true" aria-label="Mobile not supported">
+        <h2 className="mobile-title">Available on desktop</h2>
+        <p className="mobile-text">
+          This site is optimized for larger screens and precise input. Please open it on a desktop or widen your browser window.
+        </p>
+      </div>
       <header className="gol-header">
         <h1 className="gol-title">Conway's Game of Life</h1>
         <div className="header-center" ref={presetMenuRef}>

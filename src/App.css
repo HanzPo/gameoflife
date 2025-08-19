@@ -8,6 +8,43 @@
   box-sizing: border-box;
 }
 
+/* Mobile notice overlay: hidden on wide screens, shown on small screens */
+.mobile-overlay {
+  display: none;
+}
+
+@media (max-width: 820px) {
+  .mobile-overlay {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    place-content: center;
+    background: rgba(0,0,0,0.75);
+    z-index: 1000;
+    padding: 24px;
+    text-align: center;
+  }
+  /* Hide all other app content on small screens so only the notice shows */
+  .gol-root > *:not(.mobile-overlay) {
+    display: none !important;
+  }
+  .mobile-title {
+    color: var(--background);
+    background: var(--foreground);
+    padding: 10px 14px;
+    border-radius: 12px;
+    margin: 0 0 12px 0;
+    font-size: 18px;
+  }
+  .mobile-text {
+    color: #f2f2f2;
+    max-width: 26ch;
+    margin: 0;
+    line-height: 1.4;
+  }
+}
+
 .top-tools {
   position: fixed;
   top: 16px;
