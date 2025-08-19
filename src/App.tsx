@@ -50,7 +50,9 @@ function App() {
   const [camCol, setCamCol] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const dragRef = useRef<{ startX: number; startY: number; startOffsetX: number; startOffsetY: number; moved: boolean; startCamRow: number; startCamCol: number }>({ startX: 0, startY: 0, startOffsetX: 0, startOffsetY: 0, moved: false, startCamRow: 0, startCamCol: 0 })
+  const isDraggingRef = useRef(false)
   const [cellSizePx, setCellSizePx] = useState(18)
+  const viewportRef = useRef<HTMLDivElement>(null)
   const GAP_PX = 2
   const PADDING_PX = 2
   const PITCH_PX = useMemo(() => cellSizePx + GAP_PX, [cellSizePx])
@@ -63,12 +65,12 @@ function App() {
   // Resize grid when window changes, keeping current cells if possible
   useEffect(() => {
     function handleResize() {
-      const viewportWidth = window.innerWidth
-      const viewportHeight = window.innerHeight
-      const controlBarHeight = 120
-      const padding = 48
-      const maxCols = Math.max(8, Math.floor((viewportWidth - padding) / PITCH_PX))
-      const maxRows = Math.max(8, Math.floor((viewportHeight - controlBarHeight - padding) / PITCH_PX))
+      const stage = document.querySelector('.gol-stage') as HTMLElement | null
+      const rect = stage?.getBoundingClientRect()
+      const usableW = rect ? rect.width : window.innerWidth
+      const usableH = rect ? rect.height : window.innerHeight - 140
+      const maxCols = Math.max(8, Math.floor((usableW - PADDING_PX * 2) / PITCH_PX))
+      const maxRows = Math.max(8, Math.floor((usableH - PADDING_PX * 2) / PITCH_PX))
       setRows(maxRows)
       setCols(maxCols)
     }
@@ -158,58 +160,9 @@ function App() {
 
   const aliveCount = useMemo(() => live.size, [live])
 
-  const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    setIsDragging(true)
-    dragRef.current = { startX: e.clientX, startY: e.clientY, startOffsetX: offsetXPx, startOffsetY: offsetYPx, moved: false, startCamRow: camRow, startCamCol: camCol }
-    ;(e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId)
-  }, [offsetXPx, offsetYPx, camRow, camCol])
-
-  const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDragging) return
-    const ref = dragRef.current
-    const dx = e.clientX - ref.startX
-    const dy = e.clientY - ref.startY
-    const totalX = ref.startOffsetX + dx
-    const totalY = ref.startOffsetY + dy
-    const dCols = Math.floor(totalX / PITCH_PX)
-    const dRows = Math.floor(totalY / PITCH_PX)
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-      ref.moved = true
-    }
-    const newCamCol = ref.startCamCol - dCols
-    const newCamRow = ref.startCamRow - dRows
-    const remX = totalX - dCols * PITCH_PX
-    const remY = totalY - dRows * PITCH_PX
-    setCamCol(newCamCol)
-    setCamRow(newCamRow)
-    setOffsetXPx(remX)
-    setOffsetYPx(remY)
-  }, [isDragging, PITCH_PX])
-
-  const onPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const ref = dragRef.current
-    setIsDragging(false)
-    ;(e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId)
-    if (!ref.moved && !isPlaying) {
-      const gridEl = e.currentTarget
-      const rect = gridEl.getBoundingClientRect()
-      // rect already reflects the CSS transform translation; only subtract padding
-      const localX = e.clientX - rect.left - PADDING_PX
-      const localY = e.clientY - rect.top - PADDING_PX
-      if (localX >= 0 && localY >= 0) {
-        const vc = Math.floor(localX / PITCH_PX)
-        const vr = Math.floor(localY / PITCH_PX)
-        if (vc >= 0 && vc < cols + LEAD_CELLS && vr >= 0 && vr < rows + LEAD_CELLS) {
-          const wr = camRow + vr - LEAD_CELLS
-          const wc = camCol + vc - LEAD_CELLS
-          toggleCell(wr, wc)
-        }
-      }
-    }
-  }, [isPlaying, toggleCell, camRow, camCol, cols, rows, PITCH_PX])
 
   const onWheel = useCallback(
-    (e: React.WheelEvent<HTMLDivElement>) => {
+    (e: React.WheelEvent<HTMLElement>) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault()
         const beforePitch = PITCH_PX
@@ -218,7 +171,7 @@ function App() {
         const nextSize = clampCell(Math.round(cellSizePx * scale))
         if (nextSize === cellSizePx) return
         const afterPitch = nextSize + GAP_PX
-        const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
+        const rect = (e.currentTarget as HTMLCanvasElement).getBoundingClientRect()
         const localX = e.clientX - rect.left - PADDING_PX - (offsetXPx - LEAD_CELLS * PITCH_PX)
         const localY = e.clientY - rect.top - PADDING_PX - (offsetYPx - LEAD_CELLS * PITCH_PX)
         if (localX >= 0 && localY >= 0) {
@@ -402,15 +355,13 @@ function App() {
   const insertPreset = useCallback(() => {
     const shape = PRESETS[preset]
     if (!shape) return
-    const centerR = camRow + Math.floor(rows / 2)
-    const centerC = camCol + Math.floor(cols / 2)
     const next = new Set<string>()
-    for (const [dr, dc] of shape) next.add(cellKey(centerR + dr, centerC + dc))
+    for (const [dr, dc] of shape) next.add(cellKey(camRow + dr, camCol + dc))
     setIsPlaying(false)
     setGeneration(0)
     setLive(next)
     setInitialLive(new Set(next))
-  }, [PRESETS, preset, camRow, camCol, rows, cols])
+  }, [PRESETS, preset, camRow, camCol])
 
   // Export/Import
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -542,36 +493,103 @@ function App() {
 
       <main className="gol-stage">
         <div
-          className={`grid ${isDragging ? 'dragging' : ''}`}
+          ref={viewportRef}
+          className={`grid-viewport ${isDragging ? 'dragging' : ''}`}
           style={{
-            gridTemplateColumns: `repeat(${cols + LEAD_CELLS}, ${cellSizePx}px)`,
-            transform: `translate(${offsetXPx - LEAD_CELLS * PITCH_PX}px, ${offsetYPx - LEAD_CELLS * PITCH_PX}px)`,
+            position: 'relative',
+            width: '100%',
+            height: '100%',
+            overflow: 'hidden',
+            cursor: isDragging ? 'grabbing' : 'grab',
+            background: 'var(--border)',
+            borderRadius: '12px',
           }}
-          role="grid"
-          aria-label="Editable grid to set initial state"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            setIsDragging(true)
+            isDraggingRef.current = true
+            dragRef.current = {
+              startX: e.clientX,
+              startY: e.clientY,
+              startOffsetX: offsetXPx,
+              startOffsetY: offsetYPx,
+              moved: false,
+              startCamRow: camRow,
+              startCamCol: camCol
+            }
+          }}
+          onMouseMove={(e) => {
+            if (!isDraggingRef.current) return
+            const ref = dragRef.current
+            const dx = e.clientX - ref.startX
+            const dy = e.clientY - ref.startY
+            
+            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+              ref.moved = true
+            }
+            
+            const totalX = ref.startOffsetX + dx
+            const totalY = ref.startOffsetY + dy
+            const dCols = Math.floor(totalX / PITCH_PX)
+            const dRows = Math.floor(totalY / PITCH_PX)
+            
+            setCamCol(ref.startCamCol - dCols)
+            setCamRow(ref.startCamRow - dRows)
+            setOffsetXPx(totalX - dCols * PITCH_PX)
+            setOffsetYPx(totalY - dRows * PITCH_PX)
+          }}
+          onMouseUp={() => {
+            setIsDragging(false)
+            isDraggingRef.current = false
+          }}
+          onMouseLeave={() => {
+            setIsDragging(false)
+            isDraggingRef.current = false
+          }}
+          onClick={(e) => {
+            if (isPlaying || dragRef.current.moved) return
+            
+            const rect = e.currentTarget.getBoundingClientRect()
+            const x = e.clientX - rect.left
+            const y = e.clientY - rect.top
+            
+            // Convert click coordinates to world coordinates directly
+            const viewportCenterX = (viewportRef.current?.clientWidth || 800) / 2
+            const viewportCenterY = (viewportRef.current?.clientHeight || 600) / 2
+            
+            const worldX = x - offsetXPx - viewportCenterX + PITCH_PX / 2 + camCol * PITCH_PX
+            const worldY = y - offsetYPx - viewportCenterY + PITCH_PX / 2 + camRow * PITCH_PX
+            
+            const worldCol = Math.floor(worldX / PITCH_PX)
+            const worldRow = Math.floor(worldY / PITCH_PX)
+            
+            toggleCell(worldRow, worldCol)
+          }}
           onWheel={onWheel}
         >
-          {Array.from({ length: rows + LEAD_CELLS }).map((_, vr) =>
-            Array.from({ length: cols + LEAD_CELLS }).map((__, vc) => {
-              const wr = camRow + (vr - LEAD_CELLS)
-              const wc = camCol + (vc - LEAD_CELLS)
-              const alive = live.has(cellKey(wr, wc))
+          {Array.from({ length: rows + 8 }).map((_, r) =>
+            Array.from({ length: cols + 8 }).map((_, c) => {
+              const worldRow = camRow + r - Math.floor((rows + 8) / 2)
+              const worldCol = camCol + c - Math.floor((cols + 8) / 2)
+              const alive = live.has(cellKey(worldRow, worldCol))
+              
               return (
-                <button
-                  key={`${vr}-${vc}`}
-                  className={`cell ${alive ? 'alive' : ''}`}
-                  aria-pressed={alive}
-                  aria-label={`Cell ${wr}, ${wc} ${alive ? 'alive' : 'dead'}`}
-                  data-r={wr}
-                  data-c={wc}
-                  disabled={isPlaying}
+                <div
+                  key={`${worldRow}-${worldCol}`}
+                  data-key={`${worldRow}-${worldCol}`}
+                  className={`grid-cell ${alive ? 'alive' : ''}`}
+                  style={{
+                    position: 'absolute',
+                    left: (worldCol - camCol) * PITCH_PX + offsetXPx + (viewportRef.current?.clientWidth || 800) / 2 - PITCH_PX / 2,
+                    top: (worldRow - camRow) * PITCH_PX + offsetYPx + (viewportRef.current?.clientHeight || 600) / 2 - PITCH_PX / 2,
+                    width: cellSizePx,
+                    height: cellSizePx,
+                    borderRadius: Math.max(2, Math.min(6, cellSizePx * 0.33)),
+                    pointerEvents: 'none',
+                  }}
                 />
               )
-            }),
+            })
           )}
         </div>
         <div className="stage-actions">

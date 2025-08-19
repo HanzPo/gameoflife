@@ -93,41 +93,28 @@
   flex: 1;
   display: grid;
   place-items: center;
-  overflow: auto;
+  overflow: hidden;
   background-image: radial-gradient(var(--border) 1px, transparent 1px);
   background-size: 24px 24px;
   background-position: center;
   position: relative;
 }
 
-.grid {
-  display: grid;
-  gap: 2px;
-  background: var(--border);
-  padding: 2px;
-  border-radius: 12px;
-  box-shadow: 0 0 0 1px var(--border) inset;
+.grid-viewport {
   touch-action: none;
+  user-select: none;
 }
 
-.cell {
-  width: var(--cell-size);
-  height: var(--cell-size);
+.grid-cell {
   background: var(--surface);
-  border: none;
-  border-radius: 6px;
   transition: background-color 120ms ease;
 }
 
-.cell:hover {
-  background: var(--hover);
-}
-
-.cell.alive {
+.grid-cell.alive {
   background: var(--foreground);
 }
 
-.grid.dragging .cell {
+.grid-viewport.dragging .grid-cell {
   transition: none;
 }
 
